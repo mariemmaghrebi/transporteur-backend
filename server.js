@@ -14,24 +14,28 @@ connectDB();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Configuration CORS (une seule fois !)
+// Configuration CORS complète
 const allowedOrigins = [
   'http://localhost:4200',
   'https://mariemmaghrebi.github.io'
 ];
-
 app.use(cors({
   origin: function(origin, callback) {
+    // Permettre les requêtes sans origin (comme les apps mobiles ou curl)
     if (!origin) return callback(null, true);
+    
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
+      console.log('Origin bloquée par CORS:', origin);
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
-
+app.options('*', cors());
 // Middleware
 app.use(express.json());
 
