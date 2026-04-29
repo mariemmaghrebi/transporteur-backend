@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const User = require('./models/User');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs'); // ← Ajout important
 
 const SECRET_KEY = 'votre_cle_secrete_tres_longue_et_complexe_2025';
 
@@ -20,8 +21,8 @@ router.post('/login', async (req, res) => {
     
     console.log('Utilisateur trouvé:', user.email, 'Rôle:', user.role);
     
-    // Comparaison directe en clair (⚠️ NON SÉCURISÉ)
-    const isValid = (user.password === password);
+    // Comparaison avec bcrypt (hash)
+    const isValid = await bcrypt.compare(password, user.password);
     console.log('Mot de passe valide:', isValid);
     
     if (!isValid) {
@@ -60,8 +61,10 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ message: 'Cet email est déjà utilisé' });
     }
     
-    // Sauvegarde du mot de passe en clair (⚠️ NON SÉCURISÉ)
-    const user = new User({ email, password, nom, prenom });
+    // Hashage du mot de passe avant sauvegarde
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    const user = new User({ email, password: hashedPassword, nom, prenom });
     await user.save();
     
     const token = jwt.sign({ 

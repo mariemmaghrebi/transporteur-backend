@@ -31,10 +31,4 @@ const userSchema = new mongoose.Schema({
   }
 });
 
-
-
-userSchema.methods.comparePassword = async function(candidatePassword) {
-  return this.password === candidatePassword; // ⚠️ Simple comparaison en clair
-};
-
 module.exports = mongoose.model('User', userSchema);
