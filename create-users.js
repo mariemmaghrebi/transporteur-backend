@@ -1,14 +1,13 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
-// URI de connexion à MongoDB Atlas (remplace par la tienne si différente)
-const MONGO_URI = 'mongodb://mariemmaghrebi_db_user:admin123@cluster0.tyyhzfg.mongodb.net:27017/transporteur?retryWrites=true&w=majority';
+const MONGO_URI = 'mongodb+srv://mariemmaghrebi_db_user:admin123@cluster0.tyyhzfg.mongodb.net/transporteur?retryWrites=true&w=majority';
+
 const createUsers = async () => {
   try {
     await mongoose.connect(MONGO_URI);
     console.log('✅ Connecté à MongoDB Atlas');
 
-    // Définir le schéma User
     const userSchema = new mongoose.Schema({
       email: String,
       password: String,
@@ -20,13 +19,13 @@ const createUsers = async () => {
     
     const User = mongoose.model('User', userSchema);
 
-    // Hacher les mots de passe
-    const adminPassword = await bcrypt.hash('admin123', 10);
-    const superPassword = await bcrypt.hash('superadmin080524', 10);
-
     // Supprimer les anciens utilisateurs
     await User.deleteMany({ email: { $in: ['admin@transportmoez.com', 'superadmin@gmail.com'] } });
     console.log('✅ Anciens utilisateurs supprimés');
+
+    // Hacher les mots de passe
+    const adminPassword = await bcrypt.hash('admin123', 10);
+    const superPassword = await bcrypt.hash('superadmin080524', 10);
 
     // Créer Admin
     const admin = new User({
