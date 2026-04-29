@@ -186,5 +186,107 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
-// ... reste des routes clients
+// ========== ROUTES CLIENTS ==========
+
+// GET - Tous les clients d'un voyage
+router.get('/:voyageId/clients', authenticateToken, async (req, res) => {
+  try {
+    const clients = await Client.find({ voyageId: req.params.voyageId });
+    res.json(clients);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// POST - Ajouter un client à un voyage (avec matricule auto)
+router.post('/:voyageId/clients', authenticateToken, async (req, res) => {
+  try {
+    // Vérifier que le voyage existe et appartient à l'utilisateur
+    const voyage = await Voyage.findOne({ _id: req.params.voyageId, userId: req.userId });
+    if (!voyage) {
+      return res.status(404).json({ message: 'Voyage non trouvé' });
+    }
+    
+    // Récupérer et incrémenter le compteur pour les clients
+    const Counter = require('./models/Counter');
+    let counter = await Counter.findOne({ name: 'clientCounter_' + req.params.voyageId });
+    if (!counter) {
+      counter = new Counter({ name: 'clientCounter_' + req.params.voyageId, sequenceValue: 1 });
+    } else {
+      counter.sequenceValue += 1;
+    }
+    await counter.save();
+    
+    // Créer le matricule automatiquement
+    const matricule = counter.sequenceValue.toString();
+    
+    const client = new Client({
+      ...req.body,
+      matricule: matricule,
+      voyageId: req.params.voyageId
+    });
+    
+    const savedClient = await client.save();
+    
+    // Ajouter le client au tableau clients du voyage
+    voyage.clients.push(savedClient._id);
+    await voyage.save();
+    
+    res.status(201).json(savedClient);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+});
+// ========== ROUTES CLIENTS ==========
+
+// GET - Tous les clients d'un voyage
+router.get('/:voyageId/clients', authenticateToken, async (req, res) => {
+  try {
+    const clients = await Client.find({ voyageId: req.params.voyageId });
+    res.json(clients);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// POST - Ajouter un client à un voyage
+router.post('/:voyageId/clients', authenticateToken, async (req, res) => {
+  try {
+    // Vérifier que le voyage existe et appartient à l'utilisateur
+    const voyage = await Voyage.findOne({ _id: req.params.voyageId, userId: req.userId });
+    if (!voyage) {
+      return res.status(404).json({ message: 'Voyage non trouvé' });
+    }
+    
+    // Récupérer et incrémenter le compteur pour les clients
+    const Counter = require('./models/Counter');
+    let counter = await Counter.findOne({ name: 'clientCounter_' + req.params.voyageId });
+    if (!counter) {
+      counter = new Counter({ name: 'clientCounter_' + req.params.voyageId, sequenceValue: 1 });
+    } else {
+      counter.sequenceValue += 1;
+    }
+    await counter.save();
+    
+    // Créer le matricule automatiquement
+    const matricule = counter.sequenceValue.toString();
+    
+    const client = new Client({
+      ...req.body,
+      matricule: matricule,
+      voyageId: req.params.voyageId
+    });
+    
+    const savedClient = await client.save();
+    
+    // Ajouter le client au tableau clients du voyage
+    voyage.clients.push(savedClient._id);
+    await voyage.save();
+    
+    res.status(201).json(savedClient);
+  } catch (error) {
+    console.error('Erreur:', error);
+    res.status(400).json({ message: error.message });
+  }
+});
 module.exports = router;
