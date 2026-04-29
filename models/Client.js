@@ -51,7 +51,8 @@ const clientSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
-  }
+  },
+  devise: { type: String, default: 'EUR' }
 });
 
 module.exports = mongoose.model('Client', clientSchema);

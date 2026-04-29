@@ -275,23 +275,25 @@ router.put('/clients/:clientId', authenticateToken, async (req, res) => {
       return res.status(404).json({ message: 'Client non trouvé' });
     }
     
-    // Vérifier que le voyage appartient à l'utilisateur
     const voyage = await Voyage.findOne({ _id: client.voyageId, userId: req.userId });
     if (!voyage) {
       return res.status(403).json({ message: 'Accès non autorisé' });
     }
     
-    const updateData = { ...req.body };
-    delete updateData.matricule;
+    const { devise, totalMontant, statutPaiement, pointGeo, nombrePieces } = req.body;
     
-    Object.assign(client, updateData);
-    const updatedClient = await client.save();
-    res.json(updatedClient);
+    if (devise) client.devise = devise;
+    if (totalMontant) client.totalMontant = totalMontant;
+    if (statutPaiement) client.statutPaiement = statutPaiement;
+    if (pointGeo) client.pointGeo = pointGeo;
+    if (nombrePieces) client.nombrePieces = nombrePieces;
+    
+    await client.save();
+    res.json(client);
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
 });
-
 // DELETE - Supprimer une image d'un client
 router.delete('/clients/:clientId/images/:imageId', authenticateToken, async (req, res) => {
   try {
