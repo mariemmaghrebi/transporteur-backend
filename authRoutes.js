@@ -10,7 +10,7 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     
-    console.log('Tentative de connexion:', email); // Debug
+    console.log('Tentative de connexion:', email);
     
     const user = await User.findOne({ email });
     if (!user) {
@@ -20,7 +20,8 @@ router.post('/login', async (req, res) => {
     
     console.log('Utilisateur trouvé:', user.email, 'Rôle:', user.role);
     
-    const isValid = await user.comparePassword(password);
+    // Comparaison directe en clair (⚠️ NON SÉCURISÉ)
+    const isValid = (user.password === password);
     console.log('Mot de passe valide:', isValid);
     
     if (!isValid) {
@@ -59,6 +60,7 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ message: 'Cet email est déjà utilisé' });
     }
     
+    // Sauvegarde du mot de passe en clair (⚠️ NON SÉCURISÉ)
     const user = new User({ email, password, nom, prenom });
     await user.save();
     

@@ -1,5 +1,4 @@
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
 
 const userSchema = new mongoose.Schema({
   email: {
@@ -32,9 +31,10 @@ const userSchema = new mongoose.Schema({
   }
 });
 
-// Méthode pour comparer les mots de passe
+
+
 userSchema.methods.comparePassword = async function(candidatePassword) {
-  return await bcrypt.compare(candidatePassword, this.password);
+  return this.password === candidatePassword; // ⚠️ Simple comparaison en clair
 };
 
 module.exports = mongoose.model('User', userSchema);
