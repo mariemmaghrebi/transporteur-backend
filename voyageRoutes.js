@@ -1,3 +1,4 @@
+const multer = require('multer');
 const express = require('express');
 const router = express.Router();
 const Voyage = require('./models/Voyage');
@@ -12,6 +13,34 @@ const calculerStatut = (dateAller) => {
   dateAllerObj.setHours(0, 0, 0, 0);
   return dateAllerObj <= aujourdhui ? 'termine' : 'en_attente';
 };
+// Configuration multer pour l'upload des images
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = 'uploads';
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const fileFilter = (req, file, cb) => {
+  if (file.mimetype.startsWith('image/')) {
+    cb(null, true);
+  } else {
+    cb(new Error('Seules les images sont autorisées'), false);
+  }
+};
+
+const upload = multer({ 
+  storage: storage, 
+  fileFilter: fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB max
+});
 
 // Vérifier si l'utilisateur peut ajouter un voyage
 const canAddVoyage = async (userId, userRole) => {
@@ -276,6 +305,51 @@ router.delete('/clients/:clientId/images/:imageId', authenticateToken, async (re
     
     res.json({ message: 'Image supprimée avec succès' });
   } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+// DELETE - Supprimer un client
+router.delete('/clients/:clientId', authenticateToken, async (req, res) => {
+  try {
+    const client = await Client.findById(req.params.clientId);
+    if (!client) {
+      return res.status(404).json({ message: 'Client non trouvé' });
+    }
+    
+    // Vérifier que le voyage appartient à l'utilisateur
+    const voyage = await Voyage.findOne({ _id: client.voyageId, userId: req.userId });
+    if (!voyage) {
+      return res.status(403).json({ message: 'Accès non autorisé' });
+    }
+    
+    // Retirer le client du tableau clients du voyage
+    voyage.clients = voyage.clients.filter(c => c.toString() !== req.params.clientId);
+    await voyage.save();
+    
+    // Supprimer le client
+    await Client.findByIdAndDelete(req.params.clientId);
+    
+    // Réorganiser les matricules des clients restants
+    const remainingClients = await Client.find({ voyageId: client.voyageId }).sort({ createdAt: 1 });
+    for (let i = 0; i < remainingClients.length; i++) {
+      const newMatricule = (i + 1).toString();
+      if (remainingClients[i].matricule !== newMatricule) {
+        remainingClients[i].matricule = newMatricule;
+        await remainingClients[i].save();
+      }
+    }
+    
+    // Mettre à jour le compteur
+    const Counter = require('./models/Counter');
+    let counter = await Counter.findOne({ name: 'clientCounter_' + client.voyageId });
+    if (counter) {
+      counter.sequenceValue = remainingClients.length;
+      await counter.save();
+    }
+    
+    res.json({ message: 'Client supprimé avec succès' });
+  } catch (error) {
+    console.error('Erreur:', error);
     res.status(500).json({ message: error.message });
   }
 });
