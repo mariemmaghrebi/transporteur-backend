@@ -211,5 +211,72 @@ router.post('/:voyageId/clients', authenticateToken, async (req, res) => {
     res.status(400).json({ message: error.message });
   }
 });
+// POST - Upload d'image pour un client
+router.post('/clients/:clientId/upload', authenticateToken, upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'Aucun fichier uploadé' });
+    }
+    
+    const client = await Client.findById(req.params.clientId);
+    if (!client) {
+      return res.status(404).json({ message: 'Client non trouvé' });
+    }
+    
+    const imageData = {
+      url: `/uploads/${req.file.filename}`,
+      filename: req.file.filename,
+      uploadDate: new Date()
+    };
+    
+    client.images.push(imageData);
+    await client.save();
+    
+    res.json(imageData);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
 
+// PUT - Modifier un client
+router.put('/clients/:clientId', authenticateToken, async (req, res) => {
+  try {
+    const client = await Client.findById(req.params.clientId);
+    if (!client) {
+      return res.status(404).json({ message: 'Client non trouvé' });
+    }
+    
+    // Vérifier que le voyage appartient à l'utilisateur
+    const voyage = await Voyage.findOne({ _id: client.voyageId, userId: req.userId });
+    if (!voyage) {
+      return res.status(403).json({ message: 'Accès non autorisé' });
+    }
+    
+    const updateData = { ...req.body };
+    delete updateData.matricule;
+    
+    Object.assign(client, updateData);
+    const updatedClient = await client.save();
+    res.json(updatedClient);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+// DELETE - Supprimer une image d'un client
+router.delete('/clients/:clientId/images/:imageId', authenticateToken, async (req, res) => {
+  try {
+    const client = await Client.findById(req.params.clientId);
+    if (!client) {
+      return res.status(404).json({ message: 'Client non trouvé' });
+    }
+    
+    client.images = client.images.filter(img => img.id !== req.params.imageId);
+    await client.save();
+    
+    res.json({ message: 'Image supprimée avec succès' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
 module.exports = router;
