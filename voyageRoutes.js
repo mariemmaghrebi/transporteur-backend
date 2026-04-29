@@ -10,25 +10,18 @@ const calculerStatut = (dateAller) => {
   aujourdhui.setHours(0, 0, 0, 0);
   const dateAllerObj = new Date(dateAller);
   dateAllerObj.setHours(0, 0, 0, 0);
-  
-  // Si la date d'aller est aujourd'hui ou dans le futur = terminé
-  // Si la date d'aller est dans le passé = en attente
   return dateAllerObj <= aujourdhui ? 'termine' : 'en_attente';
 };
 
 // Vérifier si l'utilisateur peut ajouter un voyage
 const canAddVoyage = async (userId, userRole) => {
   if (userRole === 'super_admin') return true;
-  
-  // Vérifier s'il y a un voyage en attente (date aller > aujourd'hui)
   const aujourdhui = new Date();
   aujourdhui.setHours(0, 0, 0, 0);
-  
   const voyageEnAttente = await Voyage.findOne({
     userId: userId,
     dateAller: { $gt: aujourdhui }
   });
-  
   return !voyageEnAttente;
 };
 
@@ -37,7 +30,6 @@ router.post('/', authenticateToken, async (req, res) => {
   try {
     const { dateAller, dateRetour } = req.body;
     
-    // Vérifier si l'utilisateur peut ajouter un voyage
     const peutAjouter = await canAddVoyage(req.userId, req.userRole);
     if (!peutAjouter) {
       return res.status(403).json({ 
@@ -46,7 +38,6 @@ router.post('/', authenticateToken, async (req, res) => {
     }
     
     const Counter = require('./models/Counter');
-    
     let counter = await Counter.findOne({ name: 'voyageCounter' });
     if (!counter) {
       counter = new Counter({ name: 'voyageCounter', sequenceValue: 1 });
@@ -81,7 +72,6 @@ router.put('/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ message: 'Voyage non trouvé' });
     }
     
-    // Vérifier si l'utilisateur peut modifier ce voyage
     if (req.userRole !== 'super_admin' && voyage.statut === 'termine') {
       return res.status(403).json({ 
         message: 'Ce voyage est terminé. Vous ne pouvez plus le modifier.' 
@@ -91,7 +81,6 @@ router.put('/:id', authenticateToken, async (req, res) => {
     const updateData = { ...req.body };
     delete updateData.matricule;
     
-    // Recalculer le statut si la date d'aller change
     if (updateData.dateAller) {
       updateData.statut = calculerStatut(updateData.dateAller);
     }
@@ -112,7 +101,6 @@ router.delete('/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ message: 'Voyage non trouvé' });
     }
     
-    // Super Admin peut tout supprimer, Admin ne peut pas supprimer un voyage terminé
     if (req.userRole !== 'super_admin' && voyage.statut === 'termine') {
       return res.status(403).json({ 
         message: 'Vous ne pouvez pas supprimer un voyage terminé.' 
@@ -122,7 +110,6 @@ router.delete('/:id', authenticateToken, async (req, res) => {
     await Client.deleteMany({ voyageId: req.params.id });
     await Voyage.findByIdAndDelete(req.params.id);
     
-    // Réorganiser les matricules
     const remainingVoyages = await Voyage.find({ userId: req.userId }).sort({ dateCreation: 1 });
     for (let i = 0; i < remainingVoyages.length; i++) {
       remainingVoyages[i].matricule = (i + 1).toString();
@@ -142,38 +129,29 @@ router.delete('/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// GET - Tous les voyages (Super Admin voit tout, Admin voit seulement ses voyages)
+// GET - Tous les voyages
 router.get('/', authenticateToken, async (req, res) => {
   try {
     let voyages;
     
     if (req.userRole === 'super_admin') {
-      // Super Admin voit tous les voyages de tous les utilisateurs
       voyages = await Voyage.find({})
         .sort({ dateCreation: 1 })
         .populate('clients');
     } else {
-      // Admin normal voit seulement ses propres voyages
       voyages = await Voyage.find({ userId: req.userId })
         .sort({ dateCreation: 1 })
         .populate('clients');
     }
     
-    // Mettre à jour les statuts
     for (let voyage of voyages) {
-      const aujourdhui = new Date();
-      aujourdhui.setHours(0, 0, 0, 0);
-      const dateAllerObj = new Date(voyage.dateAller);
-      dateAllerObj.setHours(0, 0, 0, 0);
-      const nouveauStatut = dateAllerObj <= aujourdhui ? 'termine' : 'en_attente';
-      
+      const nouveauStatut = calculerStatut(voyage.dateAller);
       if (voyage.statut !== nouveauStatut) {
         voyage.statut = nouveauStatut;
         await voyage.save();
       }
     }
     
-    // Trier par matricule numérique
     voyages.sort((a, b) => {
       const numA = parseInt(a.matricule);
       const numB = parseInt(b.matricule);
@@ -201,13 +179,11 @@ router.get('/:voyageId/clients', authenticateToken, async (req, res) => {
 // POST - Ajouter un client à un voyage (avec matricule auto)
 router.post('/:voyageId/clients', authenticateToken, async (req, res) => {
   try {
-    // Vérifier que le voyage existe et appartient à l'utilisateur
     const voyage = await Voyage.findOne({ _id: req.params.voyageId, userId: req.userId });
     if (!voyage) {
       return res.status(404).json({ message: 'Voyage non trouvé' });
     }
     
-    // Récupérer et incrémenter le compteur pour les clients
     const Counter = require('./models/Counter');
     let counter = await Counter.findOne({ name: 'clientCounter_' + req.params.voyageId });
     if (!counter) {
@@ -217,7 +193,6 @@ router.post('/:voyageId/clients', authenticateToken, async (req, res) => {
     }
     await counter.save();
     
-    // Créer le matricule automatiquement
     const matricule = counter.sequenceValue.toString();
     
     const client = new Client({
@@ -227,59 +202,6 @@ router.post('/:voyageId/clients', authenticateToken, async (req, res) => {
     });
     
     const savedClient = await client.save();
-    
-    // Ajouter le client au tableau clients du voyage
-    voyage.clients.push(savedClient._id);
-    await voyage.save();
-    
-    res.status(201).json(savedClient);
-  } catch (error) {
-    res.status(400).json({ message: error.message });
-  }
-});
-// ========== ROUTES CLIENTS ==========
-
-// GET - Tous les clients d'un voyage
-router.get('/:voyageId/clients', authenticateToken, async (req, res) => {
-  try {
-    const clients = await Client.find({ voyageId: req.params.voyageId });
-    res.json(clients);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// POST - Ajouter un client à un voyage
-router.post('/:voyageId/clients', authenticateToken, async (req, res) => {
-  try {
-    // Vérifier que le voyage existe et appartient à l'utilisateur
-    const voyage = await Voyage.findOne({ _id: req.params.voyageId, userId: req.userId });
-    if (!voyage) {
-      return res.status(404).json({ message: 'Voyage non trouvé' });
-    }
-    
-    // Récupérer et incrémenter le compteur pour les clients
-    const Counter = require('./models/Counter');
-    let counter = await Counter.findOne({ name: 'clientCounter_' + req.params.voyageId });
-    if (!counter) {
-      counter = new Counter({ name: 'clientCounter_' + req.params.voyageId, sequenceValue: 1 });
-    } else {
-      counter.sequenceValue += 1;
-    }
-    await counter.save();
-    
-    // Créer le matricule automatiquement
-    const matricule = counter.sequenceValue.toString();
-    
-    const client = new Client({
-      ...req.body,
-      matricule: matricule,
-      voyageId: req.params.voyageId
-    });
-    
-    const savedClient = await client.save();
-    
-    // Ajouter le client au tableau clients du voyage
     voyage.clients.push(savedClient._id);
     await voyage.save();
     
@@ -289,4 +211,5 @@ router.post('/:voyageId/clients', authenticateToken, async (req, res) => {
     res.status(400).json({ message: error.message });
   }
 });
+
 module.exports = router;
