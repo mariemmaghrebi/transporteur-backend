@@ -135,13 +135,20 @@ router.put('/:id', authenticateToken, async (req, res) => {
     res.status(400).json({ message: error.message });
   }
 });
-
-// DELETE - Supprimer un voyage
+// DELETE - Supprimer un voyage (corrigé)
 router.delete('/:id', authenticateToken, async (req, res) => {
   try {
-    const voyage = await Voyage.findOne({ _id: req.params.id, userId: req.userId });
+    console.log('🗑️ Suppression voyage ID:', req.params.id);
+    
+    const voyage = await Voyage.findById(req.params.id);
     if (!voyage) {
+      console.log('❌ Voyage non trouvé');
       return res.status(404).json({ message: 'Voyage non trouvé' });
+    }
+    
+    // Vérifier que l'utilisateur a le droit
+    if (req.userRole !== 'super_admin' && voyage.userId.toString() !== req.userId) {
+      return res.status(403).json({ message: 'Accès non autorisé' });
     }
     
     if (req.userRole !== 'super_admin' && voyage.statut === 'termine') {
@@ -151,20 +158,23 @@ router.delete('/:id', authenticateToken, async (req, res) => {
     }
     
     // Supprimer tous les clients associés à ce voyage
-    await Client.deleteMany({ voyageId: req.params.id });
+    const deletedClients = await Client.deleteMany({ voyageId: req.params.id });
+    console.log(`✅ ${deletedClients.deletedCount} clients supprimés`);
     
     // Supprimer le voyage
     await Voyage.findByIdAndDelete(req.params.id);
+    console.log('✅ Voyage supprimé');
     
     // Récupérer les voyages restants de l'utilisateur
-    const remainingVoyages = await Voyage.find({ userId: req.userId }).sort({ dateCreation: 1 });
+    const remainingVoyages = await Voyage.find({ userId: voyage.userId }).sort({ dateCreation: 1 });
     
-    // Réorganiser les matricules dans l'ordre
+    // Réorganiser les matricules
     for (let i = 0; i < remainingVoyages.length; i++) {
       const newMatricule = (i + 1).toString();
       if (remainingVoyages[i].matricule !== newMatricule) {
         remainingVoyages[i].matricule = newMatricule;
         await remainingVoyages[i].save();
+        console.log(`📝 Voyage ${remainingVoyages[i]._id} nouveau matricule: ${newMatricule}`);
       }
     }
     
@@ -178,7 +188,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
     
     res.json({ message: 'Voyage supprimé avec succès, matricules réorganisés' });
   } catch (error) {
-    console.error('Erreur:', error);
+    console.error('❌ Erreur suppression voyage:', error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -205,6 +215,24 @@ router.get('/', authenticateToken, async (req, res) => {
     });
     
     res.json(voyages);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+// GET - Un voyage spécifique
+router.get('/:id', authenticateToken, async (req, res) => {
+  try {
+    const voyage = await Voyage.findById(req.params.id).populate('clients');
+    if (!voyage) {
+      return res.status(404).json({ message: 'Voyage non trouvé' });
+    }
+    
+    // Vérifier que l'utilisateur a le droit
+    if (req.userRole !== 'super_admin' && voyage.userId.toString() !== req.userId) {
+      return res.status(403).json({ message: 'Accès non autorisé' });
+    }
+    
+    res.json(voyage);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -405,16 +433,25 @@ router.delete('/clients/:clientId/images/:imageId', authenticateToken, async (re
   }
 });
 
-// DELETE - Supprimer un client
+// DELETE - Supprimer un client (corrigé)
 router.delete('/clients/:clientId', authenticateToken, async (req, res) => {
   try {
+    console.log('🗑️ Suppression client ID:', req.params.clientId);
+    
     const client = await Client.findById(req.params.clientId);
     if (!client) {
+      console.log('❌ Client non trouvé');
       return res.status(404).json({ message: 'Client non trouvé' });
     }
     
-    const voyage = await Voyage.findOne({ _id: client.voyageId, userId: req.userId });
+    const voyage = await Voyage.findOne({ _id: client.voyageId });
     if (!voyage) {
+      console.log('❌ Voyage non trouvé');
+      return res.status(404).json({ message: 'Voyage non trouvé' });
+    }
+    
+    // Vérifier que l'utilisateur a le droit
+    if (req.userRole !== 'super_admin' && voyage.userId.toString() !== req.userId) {
       return res.status(403).json({ message: 'Accès non autorisé' });
     }
     
@@ -424,20 +461,23 @@ router.delete('/clients/:clientId', authenticateToken, async (req, res) => {
       });
     }
     
-    // Supprimer le client
+    // Supprimer le client de la base
     await Client.findByIdAndDelete(req.params.clientId);
+    console.log('✅ Client supprimé de la collection clients');
     
     // Retirer le client du tableau clients du voyage
     voyage.clients = voyage.clients.filter(c => c.toString() !== req.params.clientId);
     await voyage.save();
+    console.log('✅ Client retiré du tableau clients du voyage');
     
-    // Récupérer les clients restants de ce voyage et réorganiser les matricules
+    // Réorganiser les matricules des clients restants
     const remainingClients = await Client.find({ voyageId: client.voyageId }).sort({ date: 1 });
     for (let i = 0; i < remainingClients.length; i++) {
       const newMatricule = (i + 1).toString();
       if (remainingClients[i].matricule !== newMatricule) {
         remainingClients[i].matricule = newMatricule;
         await remainingClients[i].save();
+        console.log(`📝 Client ${remainingClients[i]._id} nouveau matricule: ${newMatricule}`);
       }
     }
     
@@ -451,7 +491,7 @@ router.delete('/clients/:clientId', authenticateToken, async (req, res) => {
     
     res.json({ message: 'Client supprimé avec succès, matricules réorganisés' });
   } catch (error) {
-    console.error('Erreur:', error);
+    console.error('❌ Erreur suppression client:', error);
     res.status(500).json({ message: error.message });
   }
 });
