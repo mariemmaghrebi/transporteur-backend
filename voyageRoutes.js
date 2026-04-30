@@ -255,12 +255,24 @@ router.get('/:id', authenticateToken, async (req, res) => {
 // GET - Tous les clients d'un voyage
 router.get('/:voyageId/clients', authenticateToken, async (req, res) => {
   try {
+    // Vérifier que le voyage existe
+    let voyage;
+    if (req.userRole === 'super_admin') {
+      voyage = await Voyage.findOne({ _id: req.params.voyageId, userId: req.userId });
+    } else {
+      voyage = await Voyage.findById(req.params.voyageId);
+    }
+    
+    if (!voyage) {
+      return res.status(404).json({ message: 'Voyage non trouvé' });
+    }
+    
+    // Admin normal peut voir les clients même si voyage est terminé (consultation uniquement)
     const clients = await Client.find({ voyageId: req.params.voyageId });
-    // Ne pas envoyer les images complètes dans la liste (trop lourd)
     const clientsSansImages = clients.map(client => {
       const clientObj = client.toObject();
       clientObj.images = client.images.map(img => ({
-        _id: img._id,           // ← Changé : id → _id
+        _id: img._id,
         filename: img.filename,
         contentType: img.contentType,
         uploadDate: img.uploadDate
@@ -272,19 +284,40 @@ router.get('/:voyageId/clients', authenticateToken, async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
-
-// POST - Ajouter un client à un voyage
+// POST - Ajouter un client à un voyage (admin normal : uniquement voyages en attente)
 router.post('/:voyageId/clients', authenticateToken, async (req, res) => {
   try {
-    const voyage = await Voyage.findOne({ _id: req.params.voyageId, userId: req.userId });
+    // Récupérer le voyage
+    let voyage;
+    
+    if (req.userRole === 'super_admin') {
+      // Super Admin: peut ajouter à n'importe quel voyage
+      voyage = await Voyage.findOne({ _id: req.params.voyageId, userId: req.userId });
+    } else {
+      // Admin normal: trouve le voyage par son _id (sans restriction userId)
+      voyage = await Voyage.findById(req.params.voyageId);
+    }
+    
     if (!voyage) {
+      console.log('❌ Voyage non trouvé');
       return res.status(404).json({ message: 'Voyage non trouvé' });
     }
     
-    if (voyage.statut === 'termine' && req.userRole !== 'super_admin') {
-      return res.status(403).json({ 
-        message: 'Ce voyage est terminé. Vous ne pouvez plus ajouter de client.' 
-      });
+    // Vérifier le statut du voyage
+    if (req.userRole !== 'super_admin') {
+      // Admin normal ne peut ajouter que si le voyage est "en attente"
+      if (voyage.statut !== 'en_attente') {
+        return res.status(403).json({ 
+          message: 'Vous ne pouvez ajouter des clients qu\'aux voyages en attente.' 
+        });
+      }
+    } else {
+      // Super Admin: restrictions normales
+      if (voyage.statut === 'termine' && req.userRole !== 'super_admin') {
+        return res.status(403).json({ 
+          message: 'Ce voyage est terminé. Vous ne pouvez plus ajouter de client.' 
+        });
+      }
     }
     
     const Counter = require('./models/Counter');
@@ -302,7 +335,7 @@ router.post('/:voyageId/clients', authenticateToken, async (req, res) => {
       ...req.body,
       matricule: matricule,
       voyageId: req.params.voyageId,
-      images: [] // Pas d'images à la création
+      images: []
     });
     
     const savedClient = await client.save();
