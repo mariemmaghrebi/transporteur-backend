@@ -286,22 +286,28 @@ router.post('/clients/:clientId/upload', authenticateToken, upload.single('image
   }
 });
 
-// GET - Récupérer une image spécifique
-router.get('/clients/:clientId/images/:imageId', authenticateToken, async (req, res) => {
+// GET - Récupérer une image spécifique (public)
+router.get('/clients/:clientId/images/:imageId', async (req, res) => {
   try {
+    console.log('📸 Récupération image:', req.params.clientId, req.params.imageId);
+    
     const client = await Client.findById(req.params.clientId);
     if (!client) {
+      console.log('❌ Client non trouvé');
       return res.status(404).json({ message: 'Client non trouvé' });
     }
     
     const image = client.images.id(req.params.imageId);
     if (!image) {
+      console.log('❌ Image non trouvée');
       return res.status(404).json({ message: 'Image non trouvée' });
     }
     
+    console.log('✅ Image trouvée, type:', image.contentType);
     res.set('Content-Type', image.contentType);
     res.send(image.data);
   } catch (error) {
+    console.error('❌ Erreur:', error);
     res.status(500).json({ message: error.message });
   }
 });
