@@ -6,28 +6,24 @@ const { authenticateToken } = require('./middleware/auth');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const cloudinary = require('cloudinary').v2;
-const { CloudinaryStorage } = require('multer-storage-cloudinary');
 
-// Configuration Cloudinary avec variables d'environnement
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dzw5dzt9j',
-  api_key: process.env.CLOUDINARY_API_KEY || '529763536465724',
-  api_secret: process.env.CLOUDINARY_API_SECRET || 'gZvYwoiYyYyf8b3J8SufvWqrklE'
-});
 
-// Configuration du stockage Cloudinary
-const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: 'transporteur-app',
-    allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
-    transformation: [{ width: 800, height: 800, crop: 'limit' }]
+// Configuration multer pour stockage en mémoire (Blob)
+const storage = multer.memoryStorage();
+
+const fileFilter = (req, file, cb) => {
+  if (file.mimetype.startsWith('image/')) {
+    cb(null, true);
+  } else {
+    cb(new Error('Seules les images sont autorisées'), false);
   }
+};
+
+const upload = multer({ 
+  storage: storage, 
+  fileFilter: fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB max
 });
-
-const upload = multer({ storage: storage, limits: { fileSize: 5 * 1024 * 1024 } });
-
 // Calculer le statut simplifié
 const calculerStatut = (dateAller) => {
   const aujourdhui = new Date();
@@ -197,7 +193,18 @@ router.get('/', authenticateToken, async (req, res) => {
 router.get('/:voyageId/clients', authenticateToken, async (req, res) => {
   try {
     const clients = await Client.find({ voyageId: req.params.voyageId });
-    res.json(clients);
+    // Ne pas envoyer les images complètes dans la liste (trop lourd)
+    const clientsSansImages = clients.map(client => {
+      const clientObj = client.toObject();
+      clientObj.images = client.images.map(img => ({
+        _id: img._id,           // ← Changé : id → _id
+        filename: img.filename,
+        contentType: img.contentType,
+        uploadDate: img.uploadDate
+      }));
+      return clientObj;
+    });
+    res.json(clientsSansImages);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -231,7 +238,8 @@ router.post('/:voyageId/clients', authenticateToken, async (req, res) => {
     const client = new Client({
       ...req.body,
       matricule: matricule,
-      voyageId: req.params.voyageId
+      voyageId: req.params.voyageId,
+      images: [] // Pas d'images à la création
     });
     
     const savedClient = await client.save();
@@ -245,49 +253,59 @@ router.post('/:voyageId/clients', authenticateToken, async (req, res) => {
   }
 });
 
-// POST - Upload d'image pour un client
+// POST - Upload d'image pour un client (stockage BLOB)
 router.post('/clients/:clientId/upload', authenticateToken, upload.single('image'), async (req, res) => {
   try {
-    console.log('=== UPLOAD START ===');
-    console.log('Client ID:', req.params.clientId);
-    console.log('File:', req.file);
-    
     if (!req.file) {
-      console.log('No file uploaded');
       return res.status(400).json({ message: 'Aucun fichier uploadé' });
     }
     
-    console.log('File path:', req.file.path);
-    console.log('File filename:', req.file.filename);
-    
     const client = await Client.findById(req.params.clientId);
     if (!client) {
-      console.log('Client not found');
       return res.status(404).json({ message: 'Client non trouvé' });
     }
     
-    console.log('Client found:', client._id);
-    
     const imageData = {
-      url: req.file.path,
-      filename: req.file.filename,
+      data: req.file.buffer,
+      contentType: req.file.mimetype,
+      filename: req.file.originalname,
       uploadDate: new Date()
     };
     
     client.images.push(imageData);
     await client.save();
     
-    console.log('Image saved successfully');
-    console.log('=== UPLOAD END ===');
-    
-    res.status(200).json(imageData);
+    res.status(200).json({ 
+      message: 'Image uploadée avec succès',
+      imageId: client.images[client.images.length - 1]._id,
+      filename: req.file.originalname
+    });
   } catch (error) {
-    console.error('=== UPLOAD ERROR ===');
-    console.error('Error message:', error.message);
-    console.error('Error stack:', error.stack);
+    console.error('Erreur upload:', error);
     res.status(500).json({ message: error.message });
   }
 });
+
+// GET - Récupérer une image spécifique
+router.get('/clients/:clientId/images/:imageId', authenticateToken, async (req, res) => {
+  try {
+    const client = await Client.findById(req.params.clientId);
+    if (!client) {
+      return res.status(404).json({ message: 'Client non trouvé' });
+    }
+    
+    const image = client.images.id(req.params.imageId);
+    if (!image) {
+      return res.status(404).json({ message: 'Image non trouvée' });
+    }
+    
+    res.set('Content-Type', image.contentType);
+    res.send(image.data);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // PUT - Modifier un client
 router.put('/clients/:clientId', authenticateToken, async (req, res) => {
   try {
@@ -307,13 +325,21 @@ router.put('/clients/:clientId', authenticateToken, async (req, res) => {
       });
     }
     
-    const { devise, totalMontant, statutPaiement, pointGeo, nombrePieces } = req.body;
+    const { devise, totalMontant, statutPaiement, pointGeo, nombrePieces, expediteur, destinataire } = req.body;
     
     if (devise !== undefined) client.devise = devise;
     if (totalMontant !== undefined) client.totalMontant = totalMontant;
     if (statutPaiement !== undefined) client.statutPaiement = statutPaiement;
     if (pointGeo !== undefined) client.pointGeo = pointGeo;
     if (nombrePieces !== undefined) client.nombrePieces = nombrePieces;
+    if (expediteur) {
+      if (expediteur.nomPrenom) client.expediteur.nomPrenom = expediteur.nomPrenom;
+      if (expediteur.telephone) client.expediteur.telephone = expediteur.telephone;
+    }
+    if (destinataire) {
+      if (destinataire.nomPrenom) client.destinataire.nomPrenom = destinataire.nomPrenom;
+      if (destinataire.telephone) client.destinataire.telephone = destinataire.telephone;
+    }
     
     await client.save();
     res.json(client);
@@ -330,7 +356,7 @@ router.delete('/clients/:clientId/images/:imageId', authenticateToken, async (re
       return res.status(404).json({ message: 'Client non trouvé' });
     }
     
-    client.images = client.images.filter(img => img._id && img._id.toString() !== req.params.imageId);
+    client.images.pull({ _id: req.params.imageId });
     await client.save();
     
     res.json({ message: 'Image supprimée avec succès' });
@@ -362,22 +388,6 @@ router.delete('/clients/:clientId', authenticateToken, async (req, res) => {
     await voyage.save();
     
     await Client.findByIdAndDelete(req.params.clientId);
-    
-    const remainingClients = await Client.find({ voyageId: client.voyageId }).sort({ createdAt: 1 });
-    for (let i = 0; i < remainingClients.length; i++) {
-      const newMatricule = (i + 1).toString();
-      if (remainingClients[i].matricule !== newMatricule) {
-        remainingClients[i].matricule = newMatricule;
-        await remainingClients[i].save();
-      }
-    }
-    
-    const Counter = require('./models/Counter');
-    let counter = await Counter.findOne({ name: 'clientCounter_' + client.voyageId });
-    if (counter) {
-      counter.sequenceValue = remainingClients.length;
-      await counter.save();
-    }
     
     res.json({ message: 'Client supprimé avec succès' });
   } catch (error) {

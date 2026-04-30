@@ -10,7 +10,13 @@ dotenv.config();
 
 // Connexion à MongoDB
 connectDB();
-
+// Test Cloudinary
+const cloudinary = require('cloudinary').v2;
+console.log('Cloudinary config check:', {
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME ? 'OK' : 'MISSING',
+  api_key: process.env.CLOUDINARY_API_KEY ? 'OK' : 'MISSING',
+  api_secret: process.env.CLOUDINARY_API_SECRET ? 'OK' : 'MISSING'
+});
 const app = express();
 const PORT = process.env.PORT || 3000;
 

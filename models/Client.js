@@ -43,8 +43,9 @@ const clientSchema = new mongoose.Schema({
     default: 'non_paye'
   },
   images: [{
-    url: String,
-    filename: String,
+    data: { type: Buffer, required: true },
+    contentType: { type: String, required: true },
+    filename: { type: String, required: true },
     uploadDate: { type: Date, default: Date.now }
   }],
   createdAt: {
