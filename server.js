@@ -10,13 +10,6 @@ dotenv.config();
 
 // Connexion à MongoDB
 connectDB();
-// Test Cloudinary
-const cloudinary = require('cloudinary').v2;
-console.log('Cloudinary config check:', {
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME ? 'OK' : 'MISSING',
-  api_key: process.env.CLOUDINARY_API_KEY ? 'OK' : 'MISSING',
-  api_secret: process.env.CLOUDINARY_API_SECRET ? 'OK' : 'MISSING'
-});
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -45,24 +38,12 @@ app.options('*', cors());
 // Middleware
 app.use(express.json());
 
-// Créer le dossier uploads s'il n'existe pas
-if (!fs.existsSync('uploads')) {
-  fs.mkdirSync('uploads');
-}
 
 // Servir les images statiquement
 app.use('/uploads', express.static('uploads'));
 
-// Configuration multer pour l'upload des images
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, 'uploads/');
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
-});
+// Configuration multer pour l'upload des images (stockage mémoire pour Blob)
+const storage = multer.memoryStorage();
 
 const fileFilter = (req, file, cb) => {
   if (file.mimetype.startsWith('image/')) {
