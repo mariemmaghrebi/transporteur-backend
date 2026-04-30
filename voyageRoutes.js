@@ -248,14 +248,25 @@ router.post('/:voyageId/clients', authenticateToken, async (req, res) => {
 // POST - Upload d'image pour un client
 router.post('/clients/:clientId/upload', authenticateToken, upload.single('image'), async (req, res) => {
   try {
+    console.log('=== UPLOAD START ===');
+    console.log('Client ID:', req.params.clientId);
+    console.log('File:', req.file);
+    
     if (!req.file) {
+      console.log('No file uploaded');
       return res.status(400).json({ message: 'Aucun fichier uploadé' });
     }
     
+    console.log('File path:', req.file.path);
+    console.log('File filename:', req.file.filename);
+    
     const client = await Client.findById(req.params.clientId);
     if (!client) {
+      console.log('Client not found');
       return res.status(404).json({ message: 'Client non trouvé' });
     }
+    
+    console.log('Client found:', client._id);
     
     const imageData = {
       url: req.file.path,
@@ -266,13 +277,17 @@ router.post('/clients/:clientId/upload', authenticateToken, upload.single('image
     client.images.push(imageData);
     await client.save();
     
+    console.log('Image saved successfully');
+    console.log('=== UPLOAD END ===');
+    
     res.status(200).json(imageData);
   } catch (error) {
-    console.error('Erreur upload:', error);
+    console.error('=== UPLOAD ERROR ===');
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
     res.status(500).json({ message: error.message });
   }
 });
-
 // PUT - Modifier un client
 router.put('/clients/:clientId', authenticateToken, async (req, res) => {
   try {
