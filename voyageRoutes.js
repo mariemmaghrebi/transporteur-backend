@@ -4,7 +4,8 @@ const router = express.Router();
 const Voyage = require('./models/Voyage');
 const Client = require('./models/Client');
 const { authenticateToken } = require('./middleware/auth');
-
+const path = require('path');
+const fs = require('fs');
 // Calculer le statut simplifié
 const calculerStatut = (dateAller) => {
   const aujourdhui = new Date();
@@ -16,7 +17,7 @@ const calculerStatut = (dateAller) => {
 // Configuration multer pour l'upload des images
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = 'uploads';
+    const uploadDir = path.join(__dirname, 'uploads');
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
@@ -24,7 +25,7 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
+    cb(null, 'img-' + uniqueSuffix + path.extname(file.originalname));
   }
 });
 
