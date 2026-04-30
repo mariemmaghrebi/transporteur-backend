@@ -6,35 +6,27 @@ const { authenticateToken } = require('./middleware/auth');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-
-// Configuration multer pour l'upload des images
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, 'uploads');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'img-' + uniqueSuffix + path.extname(file.originalname));
+const cloudinary = require('cloudinary').v2;
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
+// Configuration Cloudinary avec TES identifiants
+cloudinary.config({
+  cloud_name: 'dzw5dzt9j',
+  api_key: '529763536465724',
+  api_secret: 'gZvYwoiYyYyf8b3J8SufvWqrklE'
+});
+// Configuration du stockage Cloudinary
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'transporteur-app',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+    transformation: [{ width: 800, height: 800, crop: 'limit' }]
   }
 });
 
-const fileFilter = (req, file, cb) => {
-  if (file.mimetype.startsWith('image/')) {
-    cb(null, true);
-  } else {
-    cb(new Error('Seules les images sont autorisées'), false);
-  }
-};
+const upload = multer({ storage: storage, limits: { fileSize: 5 * 1024 * 1024 } });
 
-const upload = multer({ 
-  storage: storage, 
-  fileFilter: fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }
-});
+
 
 // Calculer le statut simplifié
 const calculerStatut = (dateAller) => {
@@ -265,8 +257,9 @@ router.post('/clients/:clientId/upload', authenticateToken, upload.single('image
       return res.status(404).json({ message: 'Client non trouvé' });
     }
     
+    // ✅ Cloudinary donne directement l'URL complète dans req.file.path
     const imageData = {
-      url: `/uploads/${req.file.filename}`,
+      url: req.file.path,  // ← ICI : URL Cloudinary (commence par http://res.cloudinary.com/...)
       filename: req.file.filename,
       uploadDate: new Date()
     };
@@ -280,7 +273,6 @@ router.post('/clients/:clientId/upload', authenticateToken, upload.single('image
     res.status(500).json({ message: error.message });
   }
 });
-
 // PUT - Modifier un client
 router.put('/clients/:clientId', authenticateToken, async (req, res) => {
   try {
