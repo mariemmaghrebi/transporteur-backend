@@ -1,19 +1,12 @@
-const multer = require('multer');
 const express = require('express');
 const router = express.Router();
 const Voyage = require('./models/Voyage');
 const Client = require('./models/Client');
 const { authenticateToken } = require('./middleware/auth');
+const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-// Calculer le statut simplifié
-const calculerStatut = (dateAller) => {
-  const aujourdhui = new Date();
-  aujourdhui.setHours(0, 0, 0, 0);
-  const dateAllerObj = new Date(dateAller);
-  dateAllerObj.setHours(0, 0, 0, 0);
-  return dateAllerObj <= aujourdhui ? 'termine' : 'en_attente';
-};
+
 // Configuration multer pour l'upload des images
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -40,16 +33,22 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({ 
   storage: storage, 
   fileFilter: fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB max
+  limits: { fileSize: 5 * 1024 * 1024 }
 });
 
+// Calculer le statut simplifié
+const calculerStatut = (dateAller) => {
+  const aujourdhui = new Date();
+  aujourdhui.setHours(0, 0, 0, 0);
+  const dateAllerObj = new Date(dateAller);
+  dateAllerObj.setHours(0, 0, 0, 0);
+  return dateAllerObj <= aujourdhui ? 'termine' : 'en_attente';
+};
 
 // Vérifier si l'utilisateur peut ajouter un voyage
 const canAddVoyage = async (userId, userRole, dateAller) => {
-  // Super Admin peut toujours ajouter
   if (userRole === 'super_admin') return { canAdd: true, reason: '' };
   
-  // Vérifier 1: La date d'aller doit être > date aujourd'hui
   const aujourdhui = new Date();
   aujourdhui.setHours(0, 0, 0, 0);
   const dateAllerObj = new Date(dateAller);
@@ -59,7 +58,6 @@ const canAddVoyage = async (userId, userRole, dateAller) => {
     return { canAdd: false, reason: 'La date d\'aller doit être postérieure à aujourd\'hui' };
   }
   
-  // Vérifier 2: Pas de voyage en attente (statut = en_attente)
   const voyageEnAttente = await Voyage.findOne({
     userId: userId,
     statut: 'en_attente'
@@ -174,7 +172,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// GET - Tous les voyages (accessible à tous les admins)
+// GET - Tous les voyages
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const voyages = await Voyage.find({})
@@ -200,6 +198,7 @@ router.get('/', authenticateToken, async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
+
 // ========== ROUTES CLIENTS ==========
 
 // GET - Tous les clients d'un voyage
@@ -212,7 +211,7 @@ router.get('/:voyageId/clients', authenticateToken, async (req, res) => {
   }
 });
 
-// POST - Ajouter un client à un voyage (avec matricule auto)
+// POST - Ajouter un client à un voyage
 router.post('/:voyageId/clients', authenticateToken, async (req, res) => {
   try {
     const voyage = await Voyage.findOne({ _id: req.params.voyageId, userId: req.userId });
@@ -220,7 +219,6 @@ router.post('/:voyageId/clients', authenticateToken, async (req, res) => {
       return res.status(404).json({ message: 'Voyage non trouvé' });
     }
     
-    // ✅ Vérification : Si le voyage est terminé, on empêche l'ajout
     if (voyage.statut === 'termine' && req.userRole !== 'super_admin') {
       return res.status(403).json({ 
         message: 'Ce voyage est terminé. Vous ne pouvez plus ajouter de client.' 
@@ -254,6 +252,7 @@ router.post('/:voyageId/clients', authenticateToken, async (req, res) => {
     res.status(400).json({ message: error.message });
   }
 });
+
 // POST - Upload d'image pour un client
 router.post('/clients/:clientId/upload', authenticateToken, upload.single('image'), async (req, res) => {
   try {
@@ -275,13 +274,13 @@ router.post('/clients/:clientId/upload', authenticateToken, upload.single('image
     client.images.push(imageData);
     await client.save();
     
-    res.json(imageData);
+    res.status(200).json(imageData);
   } catch (error) {
+    console.error('Erreur upload:', error);
     res.status(500).json({ message: error.message });
   }
 });
 
-// PUT - Modifier un client
 // PUT - Modifier un client
 router.put('/clients/:clientId', authenticateToken, async (req, res) => {
   try {
@@ -295,7 +294,6 @@ router.put('/clients/:clientId', authenticateToken, async (req, res) => {
       return res.status(403).json({ message: 'Accès non autorisé' });
     }
     
-    // ✅ Vérification : Si le voyage est terminé, on empêche la modification
     if (voyage.statut === 'termine' && req.userRole !== 'super_admin') {
       return res.status(403).json({ 
         message: 'Ce voyage est terminé. Vous ne pouvez plus modifier de client.' 
@@ -304,11 +302,11 @@ router.put('/clients/:clientId', authenticateToken, async (req, res) => {
     
     const { devise, totalMontant, statutPaiement, pointGeo, nombrePieces } = req.body;
     
-    if (devise) client.devise = devise;
-    if (totalMontant) client.totalMontant = totalMontant;
-    if (statutPaiement) client.statutPaiement = statutPaiement;
-    if (pointGeo) client.pointGeo = pointGeo;
-    if (nombrePieces) client.nombrePieces = nombrePieces;
+    if (devise !== undefined) client.devise = devise;
+    if (totalMontant !== undefined) client.totalMontant = totalMontant;
+    if (statutPaiement !== undefined) client.statutPaiement = statutPaiement;
+    if (pointGeo !== undefined) client.pointGeo = pointGeo;
+    if (nombrePieces !== undefined) client.nombrePieces = nombrePieces;
     
     await client.save();
     res.json(client);
@@ -316,6 +314,7 @@ router.put('/clients/:clientId', authenticateToken, async (req, res) => {
     res.status(400).json({ message: error.message });
   }
 });
+
 // DELETE - Supprimer une image d'un client
 router.delete('/clients/:clientId/images/:imageId', authenticateToken, async (req, res) => {
   try {
@@ -324,7 +323,7 @@ router.delete('/clients/:clientId/images/:imageId', authenticateToken, async (re
       return res.status(404).json({ message: 'Client non trouvé' });
     }
     
-    client.images = client.images.filter(img => img.id !== req.params.imageId);
+    client.images = client.images.filter(img => img._id.toString() !== req.params.imageId);
     await client.save();
     
     res.json({ message: 'Image supprimée avec succès' });
@@ -332,6 +331,7 @@ router.delete('/clients/:clientId/images/:imageId', authenticateToken, async (re
     res.status(500).json({ message: error.message });
   }
 });
+
 // DELETE - Supprimer un client
 router.delete('/clients/:clientId', authenticateToken, async (req, res) => {
   try {
@@ -345,21 +345,17 @@ router.delete('/clients/:clientId', authenticateToken, async (req, res) => {
       return res.status(403).json({ message: 'Accès non autorisé' });
     }
     
-    // ✅ Vérification : Si le voyage est terminé, on empêche la suppression
     if (voyage.statut === 'termine' && req.userRole !== 'super_admin') {
       return res.status(403).json({ 
         message: 'Ce voyage est terminé. Vous ne pouvez plus supprimer de client.' 
       });
     }
     
-    // Retirer le client du tableau clients du voyage
     voyage.clients = voyage.clients.filter(c => c.toString() !== req.params.clientId);
     await voyage.save();
     
-    // Supprimer le client
     await Client.findByIdAndDelete(req.params.clientId);
     
-    // Réorganiser les matricules des clients restants
     const remainingClients = await Client.find({ voyageId: client.voyageId }).sort({ createdAt: 1 });
     for (let i = 0; i < remainingClients.length; i++) {
       const newMatricule = (i + 1).toString();
@@ -369,7 +365,6 @@ router.delete('/clients/:clientId', authenticateToken, async (req, res) => {
       }
     }
     
-    // Mettre à jour le compteur
     const Counter = require('./models/Counter');
     let counter = await Counter.findOne({ name: 'clientCounter_' + client.voyageId });
     if (counter) {
@@ -383,4 +378,5 @@ router.delete('/clients/:clientId', authenticateToken, async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
+
 module.exports = router;
