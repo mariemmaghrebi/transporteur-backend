@@ -44,15 +44,31 @@ const upload = multer({
 });
 
 // Vérifier si l'utilisateur peut ajouter un voyage
-const canAddVoyage = async (userId, userRole) => {
-  if (userRole === 'super_admin') return true;
+const canAddVoyage = async (userId, userRole, dateAller) => {
+  // Super Admin peut toujours ajouter
+  if (userRole === 'super_admin') return { canAdd: true, reason: '' };
+  
+  // Vérifier 1: La date d'aller doit être > date aujourd'hui
   const aujourdhui = new Date();
   aujourdhui.setHours(0, 0, 0, 0);
+  const dateAllerObj = new Date(dateAller);
+  dateAllerObj.setHours(0, 0, 0, 0);
+  
+  if (dateAllerObj <= aujourdhui) {
+    return { canAdd: false, reason: 'La date d\'aller doit être postérieure à aujourd\'hui' };
+  }
+  
+  // Vérifier 2: Pas de voyage en attente
   const voyageEnAttente = await Voyage.findOne({
     userId: userId,
-    dateAller: { $gt: aujourdhui }
+    statut: 'en_attente'
   });
-  return !voyageEnAttente;
+  
+  if (voyageEnAttente) {
+    return { canAdd: false, reason: 'Vous avez déjà un voyage en attente' };
+  }
+  
+  return { canAdd: true, reason: '' };
 };
 
 // POST - Créer un voyage
@@ -60,11 +76,9 @@ router.post('/', authenticateToken, async (req, res) => {
   try {
     const { dateAller, dateRetour } = req.body;
     
-    const peutAjouter = await canAddVoyage(req.userId, req.userRole);
-    if (!peutAjouter) {
-      return res.status(403).json({ 
-        message: 'Vous avez déjà un voyage en attente. Impossible d\'ajouter un nouveau voyage.' 
-      });
+    const { canAdd, reason } = await canAddVoyage(req.userId, req.userRole, dateAller);
+    if (!canAdd) {
+      return res.status(403).json({ message: reason });
     }
     
     const Counter = require('./models/Counter');
