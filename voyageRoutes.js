@@ -159,20 +159,12 @@ router.delete('/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// GET - Tous les voyages
+// GET - Tous les voyages (accessible à tous les admins)
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    let voyages;
-    
-    if (req.userRole === 'super_admin') {
-      voyages = await Voyage.find({})
-        .sort({ dateCreation: 1 })
-        .populate('clients');
-    } else {
-      voyages = await Voyage.find({ userId: req.userId })
-        .sort({ dateCreation: 1 })
-        .populate('clients');
-    }
+    const voyages = await Voyage.find({})
+      .sort({ dateCreation: 1 })
+      .populate('clients');
     
     for (let voyage of voyages) {
       const nouveauStatut = calculerStatut(voyage.dateAller);
@@ -193,7 +185,6 @@ router.get('/', authenticateToken, async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
-
 // ========== ROUTES CLIENTS ==========
 
 // GET - Tous les clients d'un voyage

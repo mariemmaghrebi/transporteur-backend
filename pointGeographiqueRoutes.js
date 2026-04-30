@@ -3,9 +3,10 @@ const router = express.Router();
 const PointGeographique = require('./models/PointGeographique');
 const { authenticateToken, requireSuperAdmin } = require('./middleware/auth');
 
-// GET - accessible à tous (mais seulement super admin peut voir)
-router.get('/', authenticateToken, requireSuperAdmin, async (req, res) => {
+// GET - Tous les points géographiques
+router.get('/', authenticateToken, async (req, res) => {
   try {
+    // Tous les admins voient tous les points géographiques
     const points = await PointGeographique.find().sort({ createdAt: -1 });
     res.json(points);
   } catch (error) {
