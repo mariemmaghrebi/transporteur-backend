@@ -58,7 +58,7 @@ const canAddVoyage = async (userId, userRole, dateAller) => {
   return { canAdd: true, reason: '' };
 };
 
-// POST - Créer un voyage
+// POST - Créer un voyage (avec incrémentation automatique)
 router.post('/', authenticateToken, async (req, res) => {
   try {
     const { dateAller, dateRetour } = req.body;
@@ -70,14 +70,18 @@ router.post('/', authenticateToken, async (req, res) => {
     
     const Counter = require('./models/Counter');
     let counter = await Counter.findOne({ name: 'voyageCounter' });
-    if (!counter) {
-      counter = new Counter({ name: 'voyageCounter', sequenceValue: 1 });
-    } else {
-      counter.sequenceValue += 1;
-    }
-    await counter.save();
     
-    const matricule = counter.sequenceValue.toString();
+    let nouveauNumero = 1;
+    if (counter) {
+      nouveauNumero = counter.sequenceValue + 1;
+      counter.sequenceValue = nouveauNumero;
+      await counter.save();
+    } else {
+      counter = new Counter({ name: 'voyageCounter', sequenceValue: 1 });
+      await counter.save();
+    }
+    
+    const matricule = nouveauNumero.toString();
     const statut = calculerStatut(dateAller);
     
     const voyage = new Voyage({
@@ -94,7 +98,6 @@ router.post('/', authenticateToken, async (req, res) => {
     res.status(400).json({ message: error.message });
   }
 });
-
 // PUT - Modifier un voyage
 router.put('/:id', authenticateToken, async (req, res) => {
   try {
@@ -135,7 +138,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
     res.status(400).json({ message: error.message });
   }
 });
-// DELETE - Supprimer un voyage (corrigé)
+// DELETE - Supprimer un voyage (avec réorganisation automatique des matricules)
 router.delete('/:id', authenticateToken, async (req, res) => {
   try {
     console.log('🗑️ Suppression voyage ID:', req.params.id);
@@ -146,7 +149,6 @@ router.delete('/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ message: 'Voyage non trouvé' });
     }
     
-    // Vérifier que l'utilisateur a le droit
     if (req.userRole !== 'super_admin' && voyage.userId.toString() !== req.userId) {
       return res.status(403).json({ message: 'Accès non autorisé' });
     }
@@ -157,28 +159,23 @@ router.delete('/:id', authenticateToken, async (req, res) => {
       });
     }
     
-    // Supprimer tous les clients associés à ce voyage
-    const deletedClients = await Client.deleteMany({ voyageId: req.params.id });
-    console.log(`✅ ${deletedClients.deletedCount} clients supprimés`);
+    // Supprimer les clients associés
+    await Client.deleteMany({ voyageId: req.params.id });
     
     // Supprimer le voyage
     await Voyage.findByIdAndDelete(req.params.id);
-    console.log('✅ Voyage supprimé');
     
-    // Récupérer les voyages restants de l'utilisateur
-    const remainingVoyages = await Voyage.find({ userId: voyage.userId }).sort({ dateCreation: 1 });
+    // === RÉORGANISATION AUTOMATIQUE DES MATRICULES ===
+    const remainingVoyages = await Voyage.find({ userId: req.userId }).sort({ dateCreation: 1 });
     
-    // Réorganiser les matricules
     for (let i = 0; i < remainingVoyages.length; i++) {
       const newMatricule = (i + 1).toString();
-      if (remainingVoyages[i].matricule !== newMatricule) {
-        remainingVoyages[i].matricule = newMatricule;
-        await remainingVoyages[i].save();
-        console.log(`📝 Voyage ${remainingVoyages[i]._id} nouveau matricule: ${newMatricule}`);
-      }
+      remainingVoyages[i].matricule = newMatricule;
+      await remainingVoyages[i].save();
+      console.log(`📝 Voyage ${remainingVoyages[i]._id} : nouveau matricule ${newMatricule}`);
     }
     
-    // Mettre à jour le compteur global
+    // Mettre à jour le compteur
     const Counter = require('./models/Counter');
     let counter = await Counter.findOne({ name: 'voyageCounter' });
     if (counter) {
@@ -186,20 +183,25 @@ router.delete('/:id', authenticateToken, async (req, res) => {
       await counter.save();
     }
     
-    res.json({ message: 'Voyage supprimé avec succès, matricules réorganisés' });
+    res.json({ 
+      message: 'Voyage supprimé, matricules réorganisés automatiquement',
+      voyagesRestants: remainingVoyages.length,
+      nouveauxMatricules: remainingVoyages.map(v => ({ id: v._id, matricule: v.matricule }))
+    });
   } catch (error) {
-    console.error('❌ Erreur suppression voyage:', error);
+    console.error('❌ Erreur:', error);
     res.status(500).json({ message: error.message });
   }
 });
 
-// GET - Tous les voyages
+// GET - Tous les voyages (avec correction auto des matricules)
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const voyages = await Voyage.find({})
+    let voyages = await Voyage.find({})
       .sort({ dateCreation: 1 })
       .populate('clients');
     
+    // Mise à jour des statuts
     for (let voyage of voyages) {
       const nouveauStatut = calculerStatut(voyage.dateAller);
       if (voyage.statut !== nouveauStatut) {
@@ -208,11 +210,21 @@ router.get('/', authenticateToken, async (req, res) => {
       }
     }
     
-    voyages.sort((a, b) => {
-      const numA = parseInt(a.matricule);
-      const numB = parseInt(b.matricule);
-      return numA - numB;
-    });
+    // Vérifier et corriger les matricules si nécessaire
+    let matriculeModifie = false;
+    for (let i = 0; i < voyages.length; i++) {
+      const matriculeAttendu = (i + 1).toString();
+      if (voyages[i].matricule !== matriculeAttendu) {
+        voyages[i].matricule = matriculeAttendu;
+        await voyages[i].save();
+        matriculeModifie = true;
+        console.log(`📝 Correction matricule voyage ${voyages[i]._id}: ${matriculeAttendu}`);
+      }
+    }
+    
+    if (matriculeModifie) {
+      console.log('✅ Matricules des voyages corrigés automatiquement');
+    }
     
     res.json(voyages);
   } catch (error) {
