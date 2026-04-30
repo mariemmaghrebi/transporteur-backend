@@ -220,6 +220,13 @@ router.post('/:voyageId/clients', authenticateToken, async (req, res) => {
       return res.status(404).json({ message: 'Voyage non trouvé' });
     }
     
+    // ✅ Vérification : Si le voyage est terminé, on empêche l'ajout
+    if (voyage.statut === 'termine' && req.userRole !== 'super_admin') {
+      return res.status(403).json({ 
+        message: 'Ce voyage est terminé. Vous ne pouvez plus ajouter de client.' 
+      });
+    }
+    
     const Counter = require('./models/Counter');
     let counter = await Counter.findOne({ name: 'clientCounter_' + req.params.voyageId });
     if (!counter) {
@@ -275,6 +282,7 @@ router.post('/clients/:clientId/upload', authenticateToken, upload.single('image
 });
 
 // PUT - Modifier un client
+// PUT - Modifier un client
 router.put('/clients/:clientId', authenticateToken, async (req, res) => {
   try {
     const client = await Client.findById(req.params.clientId);
@@ -285,6 +293,13 @@ router.put('/clients/:clientId', authenticateToken, async (req, res) => {
     const voyage = await Voyage.findOne({ _id: client.voyageId, userId: req.userId });
     if (!voyage) {
       return res.status(403).json({ message: 'Accès non autorisé' });
+    }
+    
+    // ✅ Vérification : Si le voyage est terminé, on empêche la modification
+    if (voyage.statut === 'termine' && req.userRole !== 'super_admin') {
+      return res.status(403).json({ 
+        message: 'Ce voyage est terminé. Vous ne pouvez plus modifier de client.' 
+      });
     }
     
     const { devise, totalMontant, statutPaiement, pointGeo, nombrePieces } = req.body;
@@ -325,10 +340,16 @@ router.delete('/clients/:clientId', authenticateToken, async (req, res) => {
       return res.status(404).json({ message: 'Client non trouvé' });
     }
     
-    // Vérifier que le voyage appartient à l'utilisateur
     const voyage = await Voyage.findOne({ _id: client.voyageId, userId: req.userId });
     if (!voyage) {
       return res.status(403).json({ message: 'Accès non autorisé' });
+    }
+    
+    // ✅ Vérification : Si le voyage est terminé, on empêche la suppression
+    if (voyage.statut === 'termine' && req.userRole !== 'super_admin') {
+      return res.status(403).json({ 
+        message: 'Ce voyage est terminé. Vous ne pouvez plus supprimer de client.' 
+      });
     }
     
     // Retirer le client du tableau clients du voyage
