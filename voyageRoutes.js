@@ -43,6 +43,7 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB max
 });
 
+
 // Vérifier si l'utilisateur peut ajouter un voyage
 const canAddVoyage = async (userId, userRole, dateAller) => {
   // Super Admin peut toujours ajouter
@@ -58,7 +59,7 @@ const canAddVoyage = async (userId, userRole, dateAller) => {
     return { canAdd: false, reason: 'La date d\'aller doit être postérieure à aujourd\'hui' };
   }
   
-  // Vérifier 2: Pas de voyage en attente
+  // Vérifier 2: Pas de voyage en attente (statut = en_attente)
   const voyageEnAttente = await Voyage.findOne({
     userId: userId,
     statut: 'en_attente'
