@@ -98,22 +98,32 @@ router.post('/', authenticateToken, async (req, res) => {
     res.status(400).json({ message: error.message });
   }
 });
-// PUT - Modifier un voyage
+// PUT - Modifier un voyage (corrigé pour admin normal)
 router.put('/:id', authenticateToken, async (req, res) => {
   try {
     console.log('🔧 Modification voyage ID:', req.params.id);
     console.log('📦 Données reçues:', req.body);
+    console.log('👤 Rôle utilisateur:', req.userRole);
     
-    const voyage = await Voyage.findOne({ _id: req.params.id, userId: req.userId });
+    // Trouver le voyage
+    let voyage;
+    if (req.userRole === 'super_admin') {
+      voyage = await Voyage.findOne({ _id: req.params.id, userId: req.userId });
+    } else {
+      // Admin normal: trouve le voyage sans vérifier userId
+      voyage = await Voyage.findById(req.params.id);
+    }
+    
     if (!voyage) {
       console.log('❌ Voyage non trouvé');
       return res.status(404).json({ message: 'Voyage non trouvé' });
     }
     
-    if (req.userRole !== 'super_admin' && voyage.statut === 'termine') {
-      console.log('❌ Voyage terminé, modification interdite');
+    // Admin normal ne peut modifier que si voyage est en attente
+    if (req.userRole !== 'super_admin' && voyage.statut !== 'en_attente') {
+      console.log('❌ Voyage non en attente, modification interdite');
       return res.status(403).json({ 
-        message: 'Ce voyage est terminé. Vous ne pouvez plus le modifier.' 
+        message: 'Vous ne pouvez modifier que les voyages en attente.' 
       });
     }
     
@@ -408,11 +418,12 @@ router.get('/clients/:clientId/images/:imageId', async (req, res) => {
   }
 });
 
-// PUT - Modifier un client
+// PUT - Modifier un client (corrigé pour admin normal)
 router.put('/clients/:clientId', authenticateToken, async (req, res) => {
   try {
     console.log('🔧 Modification client ID:', req.params.clientId);
     console.log('📦 Données reçues:', req.body);
+    console.log('👤 Rôle utilisateur:', req.userRole);
     
     const client = await Client.findById(req.params.clientId);
     if (!client) {
@@ -420,16 +431,25 @@ router.put('/clients/:clientId', authenticateToken, async (req, res) => {
       return res.status(404).json({ message: 'Client non trouvé' });
     }
     
-    const voyage = await Voyage.findOne({ _id: client.voyageId, userId: req.userId });
-    if (!voyage) {
-      console.log('❌ Voyage non trouvé ou accès non autorisé');
-      return res.status(403).json({ message: 'Accès non autorisé' });
+    // Vérification différente selon le rôle
+    let voyage;
+    if (req.userRole === 'super_admin') {
+      voyage = await Voyage.findOne({ _id: client.voyageId, userId: req.userId });
+    } else {
+      // Admin normal: trouve le voyage sans vérifier userId
+      voyage = await Voyage.findById(client.voyageId);
     }
     
-    if (voyage.statut === 'termine' && req.userRole !== 'super_admin') {
-      console.log('❌ Voyage terminé, modification interdite');
+    if (!voyage) {
+      console.log('❌ Voyage non trouvé');
+      return res.status(404).json({ message: 'Voyage non trouvé' });
+    }
+    
+    // Admin normal ne peut modifier que si voyage est en attente
+    if (req.userRole !== 'super_admin' && voyage.statut !== 'en_attente') {
+      console.log('❌ Voyage non en attente, modification interdite');
       return res.status(403).json({ 
-        message: 'Ce voyage est terminé. Vous ne pouvez plus modifier de client.' 
+        message: 'Vous ne pouvez modifier un client que si le voyage est en attente.' 
       });
     }
     
