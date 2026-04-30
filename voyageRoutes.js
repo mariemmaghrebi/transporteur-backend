@@ -98,12 +98,17 @@ router.post('/', authenticateToken, async (req, res) => {
 // PUT - Modifier un voyage
 router.put('/:id', authenticateToken, async (req, res) => {
   try {
+    console.log('🔧 Modification voyage ID:', req.params.id);
+    console.log('📦 Données reçues:', req.body);
+    
     const voyage = await Voyage.findOne({ _id: req.params.id, userId: req.userId });
     if (!voyage) {
+      console.log('❌ Voyage non trouvé');
       return res.status(404).json({ message: 'Voyage non trouvé' });
     }
     
     if (req.userRole !== 'super_admin' && voyage.statut === 'termine') {
+      console.log('❌ Voyage terminé, modification interdite');
       return res.status(403).json({ 
         message: 'Ce voyage est terminé. Vous ne pouvez plus le modifier.' 
       });
@@ -111,6 +116,10 @@ router.put('/:id', authenticateToken, async (req, res) => {
     
     const updateData = { ...req.body };
     delete updateData.matricule;
+    delete updateData._id;
+    delete updateData.userId;
+    delete updateData.clients;
+    delete updateData.dateCreation;
     
     if (updateData.dateAller) {
       updateData.statut = calculerStatut(updateData.dateAller);
@@ -118,8 +127,11 @@ router.put('/:id', authenticateToken, async (req, res) => {
     
     Object.assign(voyage, updateData);
     const updatedVoyage = await voyage.save();
+    
+    console.log('✅ Voyage modifié avec succès');
     res.json(updatedVoyage);
   } catch (error) {
+    console.error('❌ Erreur modification voyage:', error);
     res.status(400).json({ message: error.message });
   }
 });
@@ -138,15 +150,25 @@ router.delete('/:id', authenticateToken, async (req, res) => {
       });
     }
     
+    // Supprimer tous les clients associés à ce voyage
     await Client.deleteMany({ voyageId: req.params.id });
+    
+    // Supprimer le voyage
     await Voyage.findByIdAndDelete(req.params.id);
     
+    // Récupérer les voyages restants de l'utilisateur
     const remainingVoyages = await Voyage.find({ userId: req.userId }).sort({ dateCreation: 1 });
+    
+    // Réorganiser les matricules dans l'ordre
     for (let i = 0; i < remainingVoyages.length; i++) {
-      remainingVoyages[i].matricule = (i + 1).toString();
-      await remainingVoyages[i].save();
+      const newMatricule = (i + 1).toString();
+      if (remainingVoyages[i].matricule !== newMatricule) {
+        remainingVoyages[i].matricule = newMatricule;
+        await remainingVoyages[i].save();
+      }
     }
     
+    // Mettre à jour le compteur global
     const Counter = require('./models/Counter');
     let counter = await Counter.findOne({ name: 'voyageCounter' });
     if (counter) {
@@ -154,8 +176,9 @@ router.delete('/:id', authenticateToken, async (req, res) => {
       await counter.save();
     }
     
-    res.json({ message: 'Voyage supprimé avec succès' });
+    res.json({ message: 'Voyage supprimé avec succès, matricules réorganisés' });
   } catch (error) {
+    console.error('Erreur:', error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -315,22 +338,29 @@ router.get('/clients/:clientId/images/:imageId', async (req, res) => {
 // PUT - Modifier un client
 router.put('/clients/:clientId', authenticateToken, async (req, res) => {
   try {
+    console.log('🔧 Modification client ID:', req.params.clientId);
+    console.log('📦 Données reçues:', req.body);
+    
     const client = await Client.findById(req.params.clientId);
     if (!client) {
+      console.log('❌ Client non trouvé');
       return res.status(404).json({ message: 'Client non trouvé' });
     }
     
     const voyage = await Voyage.findOne({ _id: client.voyageId, userId: req.userId });
     if (!voyage) {
+      console.log('❌ Voyage non trouvé ou accès non autorisé');
       return res.status(403).json({ message: 'Accès non autorisé' });
     }
     
     if (voyage.statut === 'termine' && req.userRole !== 'super_admin') {
+      console.log('❌ Voyage terminé, modification interdite');
       return res.status(403).json({ 
         message: 'Ce voyage est terminé. Vous ne pouvez plus modifier de client.' 
       });
     }
     
+    // Mise à jour des champs
     const { devise, totalMontant, statutPaiement, pointGeo, nombrePieces, expediteur, destinataire } = req.body;
     
     if (devise !== undefined) client.devise = devise;
@@ -338,18 +368,22 @@ router.put('/clients/:clientId', authenticateToken, async (req, res) => {
     if (statutPaiement !== undefined) client.statutPaiement = statutPaiement;
     if (pointGeo !== undefined) client.pointGeo = pointGeo;
     if (nombrePieces !== undefined) client.nombrePieces = nombrePieces;
+    
     if (expediteur) {
-      if (expediteur.nomPrenom) client.expediteur.nomPrenom = expediteur.nomPrenom;
-      if (expediteur.telephone) client.expediteur.telephone = expediteur.telephone;
+      if (expediteur.nomPrenom !== undefined) client.expediteur.nomPrenom = expediteur.nomPrenom;
+      if (expediteur.telephone !== undefined) client.expediteur.telephone = expediteur.telephone;
     }
+    
     if (destinataire) {
-      if (destinataire.nomPrenom) client.destinataire.nomPrenom = destinataire.nomPrenom;
-      if (destinataire.telephone) client.destinataire.telephone = destinataire.telephone;
+      if (destinataire.nomPrenom !== undefined) client.destinataire.nomPrenom = destinataire.nomPrenom;
+      if (destinataire.telephone !== undefined) client.destinataire.telephone = destinataire.telephone;
     }
     
     await client.save();
+    console.log('✅ Client modifié avec succès');
     res.json(client);
   } catch (error) {
+    console.error('❌ Erreur modification client:', error);
     res.status(400).json({ message: error.message });
   }
 });
@@ -390,12 +424,32 @@ router.delete('/clients/:clientId', authenticateToken, async (req, res) => {
       });
     }
     
+    // Supprimer le client
+    await Client.findByIdAndDelete(req.params.clientId);
+    
+    // Retirer le client du tableau clients du voyage
     voyage.clients = voyage.clients.filter(c => c.toString() !== req.params.clientId);
     await voyage.save();
     
-    await Client.findByIdAndDelete(req.params.clientId);
+    // Récupérer les clients restants de ce voyage et réorganiser les matricules
+    const remainingClients = await Client.find({ voyageId: client.voyageId }).sort({ date: 1 });
+    for (let i = 0; i < remainingClients.length; i++) {
+      const newMatricule = (i + 1).toString();
+      if (remainingClients[i].matricule !== newMatricule) {
+        remainingClients[i].matricule = newMatricule;
+        await remainingClients[i].save();
+      }
+    }
     
-    res.json({ message: 'Client supprimé avec succès' });
+    // Mettre à jour le compteur
+    const Counter = require('./models/Counter');
+    let counter = await Counter.findOne({ name: 'clientCounter_' + client.voyageId });
+    if (counter) {
+      counter.sequenceValue = remainingClients.length;
+      await counter.save();
+    }
+    
+    res.json({ message: 'Client supprimé avec succès, matricules réorganisés' });
   } catch (error) {
     console.error('Erreur:', error);
     res.status(500).json({ message: error.message });
