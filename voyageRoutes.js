@@ -8,12 +8,14 @@ const path = require('path');
 const fs = require('fs');
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
-// Configuration Cloudinary avec TES identifiants
+
+// Configuration Cloudinary avec variables d'environnement
 cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dzw5dzt9j',
+  api_key: process.env.CLOUDINARY_API_KEY || '529763536465724',
+  api_secret: process.env.CLOUDINARY_API_SECRET || 'gZvYwoiYyYyf8b3J8SufvWqrklE'
 });
+
 // Configuration du stockage Cloudinary
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
@@ -25,8 +27,6 @@ const storage = new CloudinaryStorage({
 });
 
 const upload = multer({ storage: storage, limits: { fileSize: 5 * 1024 * 1024 } });
-
-
 
 // Calculer le statut simplifié
 const calculerStatut = (dateAller) => {
@@ -257,9 +257,8 @@ router.post('/clients/:clientId/upload', authenticateToken, upload.single('image
       return res.status(404).json({ message: 'Client non trouvé' });
     }
     
-    // ✅ Cloudinary donne directement l'URL complète dans req.file.path
     const imageData = {
-      url: req.file.path,  // ← ICI : URL Cloudinary (commence par http://res.cloudinary.com/...)
+      url: req.file.path,
       filename: req.file.filename,
       uploadDate: new Date()
     };
@@ -273,6 +272,7 @@ router.post('/clients/:clientId/upload', authenticateToken, upload.single('image
     res.status(500).json({ message: error.message });
   }
 });
+
 // PUT - Modifier un client
 router.put('/clients/:clientId', authenticateToken, async (req, res) => {
   try {
@@ -315,7 +315,7 @@ router.delete('/clients/:clientId/images/:imageId', authenticateToken, async (re
       return res.status(404).json({ message: 'Client non trouvé' });
     }
     
-    client.images = client.images.filter(img => img._id.toString() !== req.params.imageId);
+    client.images = client.images.filter(img => img._id && img._id.toString() !== req.params.imageId);
     await client.save();
     
     res.json({ message: 'Image supprimée avec succès' });
