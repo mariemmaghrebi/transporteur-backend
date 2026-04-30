@@ -15,13 +15,12 @@ const clientSchema = new mongoose.Schema({
     required: true
   },
   expediteur: {
-    nom: { type: String, required: true },
-    prenom: { type: String, required: true },
+    nomPrenom: { type: String, required: true },
+
     telephone: { type: String, required: true }
   },
   destinataire: {
-    nom: { type: String, required: true },
-    prenom: { type: String, required: true },
+    nomPrenom: { type: String, required: true },
     telephone: { type: String, required: true }
   },
   pointGeo: {
