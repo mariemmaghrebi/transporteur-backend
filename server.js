@@ -8,36 +8,22 @@ const fs = require('fs');
 
 dotenv.config();
 
-// Connexion à MongoDB
 connectDB();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Configuration CORS complète
-const allowedOrigins = [
-  'http://localhost:4200',
-  'https://mariemmaghrebi.github.io'
-];
+// Configuration CORS simplifiée et plus permissive
 app.use(cors({
-  origin: function(origin, callback) {
-    // Permettre les requêtes sans origin (comme les apps mobiles ou curl)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      console.log('Origin bloquée par CORS:', origin);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: 'https://mariemmaghrebi.github.io',  // ← URL exacte du front
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
-app.options('*', cors());
-// Middleware
-app.use(express.json());
 
+// Gérer explicitement les requêtes OPTIONS
+app.options('*', cors());
+
+app.use(express.json());
 
 // Servir les images statiquement
 app.use('/uploads', express.static('uploads'));
@@ -59,7 +45,6 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }
 });
 
-// Rendre upload disponible dans les routes
 app.set('upload', upload);
 
 // Routes
@@ -71,12 +56,10 @@ app.use('/api/auth', authRoutes);
 app.use('/api/voyages', voyageRoutes);
 app.use('/api/points-geographiques', pointGeographiqueRoutes);
 
-// Route de test
 app.get('/api/health', (req, res) => {
   res.json({ message: 'Backend fonctionne avec MongoDB !' });
 });
 
-// Démarrer le serveur
 app.listen(PORT, () => {
   console.log(`🚀 Serveur démarré sur http://localhost:${PORT}`);
 });
