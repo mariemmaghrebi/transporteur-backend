@@ -42,12 +42,6 @@ const clientSchema = new mongoose.Schema({
     enum: ['paye', 'non_paye', 'partiel'],
     default: 'non_paye'
   },
-  images: [{
-    data: { type: Buffer, required: true },
-    contentType: { type: String, required: true },
-    filename: { type: String, required: true },
-    uploadDate: { type: Date, default: Date.now }
-  }],
   createdAt: {
     type: Date,
     default: Date.now
