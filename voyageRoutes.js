@@ -188,17 +188,19 @@ router.get('/', authenticateToken, async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
-
 // GET - Un voyage spécifique
 router.get('/:id', authenticateToken, async (req, res) => {
   try {
-    const voyage = await Voyage.findById(req.params.id).populate('clients');
-    if (!voyage) {
-      return res.status(404).json({ message: 'Voyage non trouvé' });
+    let voyage;
+    
+    if (req.userRole === 'super_admin') {
+      voyage = await Voyage.findById(req.params.id).populate('clients');
+    } else {
+      voyage = await Voyage.findOne({ _id: req.params.id, userId: req.userId }).populate('clients');
     }
     
-    if (req.userRole !== 'super_admin' && voyage.userId.toString() !== req.userId) {
-      return res.status(403).json({ message: 'Accès non autorisé' });
+    if (!voyage) {
+      return res.status(404).json({ message: 'Voyage non trouvé' });
     }
     
     res.json(voyage);
@@ -212,20 +214,31 @@ router.get('/:id', authenticateToken, async (req, res) => {
 // GET - Tous les clients d'un voyage
 router.get('/:voyageId/clients', authenticateToken, async (req, res) => {
   try {
+    const voyageId = req.params.voyageId;
+    console.log('🔍 Recherche clients - Rôle:', req.userRole);
+    
     let voyage;
+    
+    // Super Admin peut voir n'importe quel voyage
     if (req.userRole === 'super_admin') {
-      voyage = await Voyage.findOne({ _id: req.params.voyageId, userId: req.userId });
+      voyage = await Voyage.findById(voyageId);
     } else {
-      voyage = await Voyage.findById(req.params.voyageId);
+      voyage = await Voyage.findOne({ _id: voyageId, userId: req.userId });
     }
     
     if (!voyage) {
+      console.log('❌ Voyage non trouvé');
       return res.status(404).json({ message: 'Voyage non trouvé' });
     }
     
-    const clients = await Client.find({ voyageId: req.params.voyageId });
+    console.log('✅ Voyage trouvé');
+    
+    const clients = await Client.find({ voyageId: voyageId });
+    console.log(`📋 ${clients.length} clients trouvés`);
+    
     res.json(clients);
   } catch (error) {
+    console.error('❌ Erreur:', error);
     res.status(500).json({ message: error.message });
   }
 });
