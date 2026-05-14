@@ -341,7 +341,7 @@ router.put('/clients/:clientId', authenticateToken, async (req, res) => {
   }
 });
 
-// DELETE - Supprimer un client
+// DELETE - Supprimer un client (SANS réorganisation des matricules)
 router.delete('/clients/:clientId', authenticateToken, async (req, res) => {
   try {
     const client = await Client.findById(req.params.clientId);
@@ -364,27 +364,19 @@ router.delete('/clients/:clientId', authenticateToken, async (req, res) => {
       });
     }
     
+    // Supprimer le client
     await Client.findByIdAndDelete(req.params.clientId);
     
+    // Retirer le client du tableau clients du voyage
     voyage.clients = voyage.clients.filter(c => c.toString() !== req.params.clientId);
     await voyage.save();
     
-    const remainingClients = await Client.find({ voyageId: client.voyageId }).sort({ date: 1 });
-    for (let i = 0; i < remainingClients.length; i++) {
-      const newMatricule = (i + 1).toString();
-      remainingClients[i].matricule = newMatricule;
-      await remainingClients[i].save();
-    }
+    // ⚠️ PAS de réorganisation des matricules
+    // Les matricules des autres clients RESTENT INCHANGÉS
     
-    const Counter = require('./models/Counter');
-    let counter = await Counter.findOne({ name: 'clientCounter_' + client.voyageId });
-    if (counter) {
-      counter.sequenceValue = remainingClients.length;
-      await counter.save();
-    }
-    
-    res.json({ message: 'Client supprimé avec succès, matricules réorganisés' });
+    res.json({ message: 'Client supprimé avec succès' });
   } catch (error) {
+    console.error('Erreur:', error);
     res.status(500).json({ message: error.message });
   }
 });
